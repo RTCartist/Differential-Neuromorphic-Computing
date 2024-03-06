@@ -1,0 +1,7 @@
+*****
+.subckt idealdiode a k
+Switch a k a k ideald
+.model ideald vswitch
++ Ron=10m Roff=1000meg Von=100m Voff=0
+.ends idealdiode
+*****

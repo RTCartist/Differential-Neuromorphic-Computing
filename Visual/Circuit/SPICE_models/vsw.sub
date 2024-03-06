@@ -1,0 +1,5 @@
+.SUBCKT vsw con1 con2 cv+ cv- params:
++ Ropen=1 Rclose=1Meg Vth=0.01
+S1 con1 con2 cv+ cv- sw1
+.model sw1 vswitch(Ron=Ropen Roff=Rclose Von=Vth Voff=Vth)
+.ends vsw

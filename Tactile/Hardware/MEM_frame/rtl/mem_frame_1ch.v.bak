@@ -1,0 +1,550 @@
+/* this version code is designed for controlling the memristor in the single channel */
+`include "defpara.v"
+module mem_frame_1ch 
+(
+    //sys input
+    input                   clk_i,
+    input                   rst_n,
+    //ADC input
+    input                   RSV_i,
+    input                   CONVST_o,
+    output                  ADC_RST_o,
+    //ADC SPI
+    input                   adc_sdi_i,
+    output                  adc_sdo_o,
+    output                  adc_sclk_o,
+    //CYUSB pin             
+    input                   flagA_i,
+    input                   cy_full_i,
+    input                   cy_empty_i,
+    output                  slcs_o,
+    output                  sloe_o,
+    output                  slrd_o,
+    output                  slrwr_o,
+    output                  pktend_o,
+    inout           [7:0]   USB_data,
+    output          [1:0]   FIFOadr_o,
+    //UART pin
+    output                  TX,
+    //piezo switch
+    output          [1:0]   piezo_row_o,
+    output          [1:0]   piezo_col_o,
+    //memristor sel select the input pin of memristor 
+    output                  sel_d0_o,
+    output                  sel_d1_o,
+    output                  sel_a_o,
+    output                  sel_b_o,
+    output                  sel_c_o, 
+    //memristor out sel select the output pin of the memristor 
+    output          [2:0]   mem_out_sel_o,
+    output                  mem_out_en0_o, 
+    output                  mem_out_en1_o,  
+    //ctrl switch to achieve the different control state
+    output  reg     [3:0]   ctrl_switch_o,//sel3,sel2,sel1,sel0
+    //DAC  pin    to set the output analog voltage of DAC, and the clock of DAC is keeping with the FPGA chip 
+    output  reg     [9:0]   dac_data_o,
+    output                  dac_clk_o,
+    //key and led
+    output          [3:0]   led_o,
+    output          [3:0]   key_o    
+) 
+//测试参数
+parameter               test_channel    =   4'b0000;
+//时间参数
+`ifdef TEST_MOD
+localparam              CH_PERIOD       =   32'd10000;//单个通道的控制持续周期，初始值为10ms
+localparam              CH_WAIT_TIME    =   6'd50;      //通道切换之后，等待模拟开关切换的时间
+localparam              CTRL_SW_WAIT    =   6'd3;       //控制开关切换后，等待模拟开关切换的时间 
+localparam              SHORT_PULSE     =   32'd50; //REMEM可能需要短脉冲来改变忆阻器阻值，此处为短脉冲的持续时间，初始值为1ms
+`else
+localparam              CH_PERIOD       =   32'd150_000;//单个通道的控制持续周期，初始值为30ms
+localparam              BR_AD_PERIOD_P  =   32'd20_000; //编程忆阻器进入感知适应-伤害感受器状态的时间
+localparam              BR_AD_PERIOD_N  =   32'd20_000; //编程忆阻器进入感知适应-伤害感受器状态的时间
+localparam              CH_WAIT_TIME    =   8'd255;      //通道切换之后，等待模拟开关切换的时间
+localparam              CTRL_SW_WAIT    =   8'd150;       //控制开关切换后，等待模拟开关切换的时间 
+localparam              PULSE_P1  =   32'd20_000; //REMEM可能需要正向短脉冲来改变忆阻器阻值，此处为短脉冲的持续时间，初始值为400us
+localparam              PULSE_P2  =   32'd5_000; //REMEM可能需要更短的正向短脉冲来改变忆阻器阻值，此处为短脉冲的持续时间，初始值为100us
+localparam              PULSE_N1  =   32'd100_000;//REMEM可能需要负向短脉冲来改变忆阻器阻值，此处为短脉冲的持续时间，初始值为2ms
+localparam              PULSE_N2  =   32'd10_000;//REMEM可能需要负向短脉冲来改变忆阻器阻值，此处为短脉冲的持续时间，初始值为200us
+//50_000 400k
+`endif
+//DAC输出参数
+localparam              DETECT_VOL      =   10'b10_0100_0000;//用于检测阻值时电压输出的参数,此处为10_0100_0000,对应的电压值为(0.2504V)
+localparam              PROG_POS_VOL    =   10'b10_1000_1100//用于BREAK状态输出正向电压，此处为0.57V
+localparam              PROG_SEN_POS_VOL=   10'b10_1100_0000;//新增一个电压输出参数，SEN，模仿忆阻器的敏化，此处为0.79V
+//REMEM状态输出电压设计
+localparam              REMEM_SHORT_POS_VOL =   10'b10_1100_0000;//用于REME状态输出短促正向电压，此处为10_1100_0000（对应0.75V）
+localparam              REMEM_POS_VOL   =   10'b10_1000_0000;//用于REMEM状态输出较长的正向电压，此处为10_1000_0000（对应0.5V）
+localparam              PROG_NEG_VOL    =   10'b01_1000_0000;//用于REME状态输出负向电压，此处为00_1100_0000（对应-0.5V）
+localparam              REMEM_SHORT_NEG_VOL =   10'b01_0100_0000;//用于ADAPT状态输出短促负向电压，此处为01_0100_0000（对应-0.7461V）  
+
+//状态判断参数
+localparam              MEM_INIT_UP     =   16'd3054;//表示忆阻器在初始状态下，其两端电压应处于的最大值
+//该值计算的前条件为：输入电压为0.25V，反馈电阻为47K，忆阻器编程保护电阻为47K，且此时忆阻器电阻约为100K/4092  150K/3054
+localparam              MEM_INIT_DOWN   =   16'd2650;//表示忆阻器在初始状态下，其两端电压应处于的最小值
+//该值计算的前条件为：输入电压为0.25V，反馈电阻为47K，忆阻器编程保护电阻为47K，且此时忆阻器电阻约为200K 180K/2650
+localparam              MEM_INIT_UP_almost      =   16'd4092;
+//在忆阻器动态反馈阈值——当电压高于该值时，用长脉冲低幅度；当电压低于该值时，用短脉冲高幅度，100K/4092。电压和反馈电阻参数同MEM_INIT_UP
+localparam              MEM_INIT_DOWN_almoset   =   16'd2028;
+//在忆阻器动态反馈阈值——当电压低于该值时，用长脉冲低幅度；当忆阻器小于该值时，用短脉冲高幅度,250k/2028。电压和反馈电阻参数同MEM_INIT_UP
+localparam              PIEZO_OVER_PRE  =   16'd8979;//压阻收到很大的压力，需要进入伤害感受器状态
+//该值计算的前条件为：输入电压为0.25V，串联电阻47K，且此时压阻薄膜的最大电阻为20K
+localparam              PIEZO_ADAPT     =   16'd2435;//压阻受到较小的压力，需要进入感知适应状态
+//该值计算的前条件为：输入电压为0.25V，串联电阻47K，且此时压阻薄膜的最大电阻为200K 
+localparam              PIEZO_NOR_UP    =   16'd8979;
+localparam              PIEZO_NOR_DOWN  =   16'd4092;
+//新增一个比较 如果压阻薄膜在这个阻值范围内正常感知，不对忆阻器阻值进行修改
+localparam              MEM_NO_ADAPT    =   16'd4092;
+//新增一个不感知适应比较，当忆阻器阻值小于这个阈值，认为不能再感知适应
+localparam              MEM_SENTI       =   16'd6211;
+//新增一个敏化状态观察设计，这里设置为50k
+//****************************计数器**********************************//
+//ch_cnt to calculate the ch period, and the sw cnt is to calculate the switch time
+reg         [31:0]      ch_cnt;//通道切换计数器
+reg         [8:0]       sw_cnt;//开关等待计数器
+
+//****************************通道标记**********************************//
+
+reg         [3:0]       ch_sign;//表示当前正在控制哪个通道  
+
+//****************************控制开关切换**********************************//
+//in the several swithcing states, they are output pin to select the channel
+reg         [3:0]       out_switch;
+reg         [3:0]       piezo_switch;
+reg         [3:0]       mem_switch;
+
+//****************************state**********************************//
+
+localparam               INIT            =       10'b0_000_000_001;
+localparam               WAIT_CH         =       10'b0_000_000_010;
+localparam               DETECT_P        =       10'b0_000_000_100;
+localparam               WAIT_SW_1       =       10'b0_000_001_000;
+localparam               DETECT_R        =       10'b0_000_010_000;
+localparam               WAIT_SW_2       =       10'b0_000_100_000;
+localparam               ADAPT           =       10'b0_001_000_000;
+localparam               BREAK           =       10'b0_010_000_000;               
+localparam               REMEM           =       10'b0_100_000_000;
+localparam               IDLE            =       10'b1_000_000_000;
+
+reg         [9:0]       state;
+
+wire                    go_wait_ch;
+wire                    go_detect_p;
+wire                    go_wait_sw_1;
+wire                    go_detect_r;
+wire                    go_wait_sw_2;
+wire                    go_adapt;
+wire                    go_break;
+wire                    go_remem;
+wire                    go_idle;
+
+
+//****************************adc数据计算**********************************//
+reg                     begin_adc_conv;
+wire                    adc_done;
+wire                    adc_init_done;
+wire        [15:0]      adc_data;
+
+reg         [17:0]      adc_data_sum;      
+wire        [17:0]      adc_data_abs;
+
+reg         [15:0]      memristor_adc_data; //记录探测忆阻器所获得的adc信息
+reg         [15:0]      piezo_adc_data;     //记录探测压阻薄膜所获得的adc信息
+
+reg         [2:0]       adc_rece_cnt;//计算接收了多少次adc的数据
+
+//assign                  adc_data_abs    =   (adc_data_sum[17]==1'b1)?adc_data_sum[17:2]-16'h8000:16'h8000-adc_data_sum[17:2];
+assign                  adc_data_abs    =   (adc_data_sum[17]==1'b1)?   adc_data_sum[17:0]-18'h20000:
+                                                                        18'h20000-adc_data_sum[17:0];//0.64V
+//****************************内部标志信号**********************************//
+
+reg                     remem_direct;//用于指示在remem状态下，应向哪一个方向改变忆阻器的电阻。0：忆阻器阻值太大，需输入正向电压
+
+//****************************数据上传信号**********************************//
+
+wire                    fd_sign;
+wire        [7:0]       USB_idata;
+wire        [7:0]       USB_odata;
+
+wire                    upload_data_rdy;
+reg                     upload_data_vld;
+
+wire        [1:0]       mem_state;
+
+//****************************三态门控制**********************************//
+
+assign                  USB_data        =   fd_sign?USB_odata:8'bz;
+assign                  USB_idata       =   USB_data;
+
+//****************************状态机跳转**********************************//
+
+assign                  go_wait_ch      =   ((state==ADAPT||state==BREAK||state==REMEM||state==IDLE)&&ch_cnt==CH_PERIOD-1'b1)||
+                                            (state==INIT&&adc_init_done);
+assign                  go_detect_p     =   (state==WAIT_CH)&&sw_cnt==CH_WAIT_TIME-1'b1;
+assign                  go_wait_sw_1    =   (state==DETECT_P)&&adc_rece_cnt==3'b111&&adc_done;   
+assign                  go_detect_r     =   (state==WAIT_SW_1)&&sw_cnt==CTRL_SW_WAIT-1'b1;
+assign                  go_wait_sw_2    =   (state==DETECT_R)&&adc_rece_cnt==3'b111&&adc_done;
+//注意：下面四个跳转信号不是在WAIT_SW_2的最后一刻才被拉高的，而是只要进入WAIT_SW_2状态就已经决定了
+//几个状态有可能同时为高，因此控制信号需要注意优先级的问题
+//go_adapt现在额外设计了机制就是如果忆阻器之前处于伤害感受状态则现在不会立即进入感知适应状态
+assign                  go_adapt        =   (state==WAIT_SW_2)&&piezo_adc_data>PIEZO_ADAPT&&piezo_adc_data<PIEZO_NOR_DOWN&&memristor_adc_data<MEM_NO_ADAPT;
+assign                  go_break        =   (state==WAIT_SW_2)&&piezo_adc_data>PIEZO_OVER_PRE;
+assign                  go_remem        =   (state==WAIT_SW_2)&&(memristor_adc_data>MEM_INIT_UP||memristor_adc_data<MEM_INIT_DOWN);
+assign                  go_idle         =   (state==WAIT_SW_2);
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        state       <=  INIT;
+    else 
+    case(state)
+        INIT: begin
+            if(adc_init_done)
+                state   <=  WAIT_CH;
+        end
+        WAIT_CH: begin
+            if(go_detect_p)
+                state   <=  DETECT_P;
+        end
+        DETECT_P: begin
+            if(go_wait_sw_1)
+                state   <=  WAIT_SW_1;
+        end
+        WAIT_SW_1: begin
+            if(go_detect_r)
+                state   <=  DETECT_R;
+        end
+        DETECT_R: begin
+            if(go_wait_sw_2)
+                state   <=  WAIT_SW_2;
+        end
+        WAIT_SW_2:begin
+            if(go_break&&sw_cnt==CTRL_SW_WAIT-1'b1)
+                state   <=  BREAK;
+            else if(go_adapt&&sw_cnt==CTRL_SW_WAIT-1'b1)
+                state   <=  ADAPT;
+            else if(go_remem&&sw_cnt==CTRL_SW_WAIT-1'b1)
+                state   <=  REMEM;
+            else if(go_idle&&sw_cnt==CTRL_SW_WAIT-1'b1)
+                state   <=  IDLE;
+        end
+        default: begin
+            if(go_wait_ch)
+                state   <=  WAIT_CH;
+        end
+    endcase
+end
+
+//****************************计数器**********************************//
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        ch_cnt  <=  0;
+    else if(ch_cnt==CH_PERIOD-1'b1)
+        ch_cnt  <=  0;
+    else if(state!=INIT)
+        ch_cnt  <=  ch_cnt+1'b1;
+end
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        sw_cnt  <=  0;
+    else if(state==WAIT_CH) begin
+        if(sw_cnt==CH_WAIT_TIME-1'b1)
+            sw_cnt  <=  0;
+        else
+            sw_cnt  <=  sw_cnt+1'b1;
+    end
+    else if(state==WAIT_SW_1||state==WAIT_SW_2) begin
+        if(sw_cnt==CTRL_SW_WAIT-1'b1)
+            sw_cnt  <=  0;
+        else
+            sw_cnt  <=  sw_cnt+1'b1;
+    end
+end
+
+//****************************通道切换**********************************//
+`ifdef test_ch
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        ch_sign     <=  test_channel;
+    else if(ch_cnt==CH_PERIOD-1'b1)
+        ch_sign     <=  ch_sign;
+end
+`else
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        ch_sign     <=  0;
+    else if(ch_cnt==CH_PERIOD-1'b1)
+        ch_sign     <=  ch_sign+1'b1;
+end
+`endif
+
+assign                  sel_d0_o        =   ~sel_d1_o;//忆阻器输入的两个8:1的模拟开关输入互斥
+assign                  mem_out_en0_o   =   ~ mem_out_en1_o;//忆阻器输出的两个8:1模拟开关输入互斥
+
+assign                  piezo_row_o     =   piezo_switch[3:2];
+assign                  piezo_col_o     =   piezo_switch[1:0];
+
+assign                  mem_out_sel_o   =   out_switch[2:0];
+assign                  mem_out_en1_o   =   out_switch[3];
+
+assign                  sel_a_o         =   mem_switch[0];
+assign                  sel_b_o         =   mem_switch[1];
+assign                  sel_c_o         =   mem_switch[2];
+
+assign                  sel_d1_o        =   mem_switch[3];
+
+`ifdef test_ch
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i) begin
+        piezo_switch    <=  test_channel;
+        out_switch      <=  test_channel;
+        mem_switch      <=  test_channel;
+    end
+    else if(ch_cnt==CH_PERIOD-1'b1) begin
+        piezo_switch    <=  piezo_switch;
+        out_switch      <=  out_switch;
+        mem_switch      <=  mem_switch;
+    end
+end
+`else
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i) begin
+        piezo_switch    <=  0;
+        out_switch      <=  0;
+        mem_switch      <=  0;
+    end
+    else if(ch_cnt==CH_PERIOD-1'b1) begin
+        piezo_switch    <=  piezo_switch+1'b1;
+        out_switch      <=  out_switch+1'b1;
+        mem_switch      <=  mem_switch+1'b1;
+    end
+end
+`endif
+
+//****************************控制开关切换**********************************//
+//几种不同模式控制开关的位置实现不同任务
+`ifdef TEST_BOARD
+always @(posedge clk_i) begin
+    ctrl_switch_o   <=  4'b0010;//
+    //ctrl_switch_o   <=  4'b1100;
+end
+`else
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        ctrl_switch_o   <=  4'b1100;
+    else 
+        case(state)
+              INIT,WAIT_CH,DETECT_P:begin
+                    ctrl_switch_o   <=  4'b1100;//单独探测压阻
+              end
+              WAIT_SW_1,DETECT_R:begin
+                    ctrl_switch_o   <=  4'b0010;//单独探测忆阻器
+              end
+              WAIT_SW_2:begin
+                    if(go_adapt||go_break||go_remem)
+                        ctrl_switch_o   <=  4'b0010;//编程忆阻器
+                    else
+                        ctrl_switch_o   <=  4'b0111;//压阻和忆阻器串联
+              end
+        endcase
+end
+`endif
+
+//****************************DAC输出**********************************//
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        remem_direct    <=  0;
+    else if(state==WAIT_SW_2) begin
+        if(memristor_adc_data>MEM_INIT_UP)
+            remem_direct    <=  1'b1;
+        else if(memristor_adc_data<MEM_INIT_DOWN)
+            remem_direct    <=  0;
+    end
+end
+
+assign                  dac_clk_o   =   clk_i;
+`ifdef TEST_BOARD
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        dac_data_o  <=  PROG_NEG_VOL;
+end
+`else
+always @(negedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        dac_data_o  <=  8'b10_0000_0000;
+    else 
+        case(state)
+            INIT:
+                dac_data_o  <=  8'b10_0000_0000;
+            WAIT_CH,DETECT_P,WAIT_SW_1,DETECT_R,WAIT_SW_2:
+                dac_data_o  <=  DETECT_VOL;
+            ADAPT:begin
+                if(ch_cnt>=BR_AD_PERIOD_N)
+                    dac_data_o  <=  DETECT_VOL;
+                else
+                    dac_data_o  <=  PROG_NEG_VOL;
+            end
+            BREAK:begin
+                if(memristor_adc_data>MEM_SENTI) begin
+                    if(ch_cnt>=BR_AD_PERIOD_P)
+                        dac_data_o  <=  DETECT_VOL;
+                    else
+                        dac_data_o  <=  PROG_SEN_POS_VOL; 
+                end
+                else beign 
+                if(ch_cnt>=BR_AD_PERIOD_P)
+                        dac_data_o  <=  DETECT_VOL;
+                    else
+                        dac_data_o  <=  PROG_POS_VOL; 
+                end
+            end
+            REMEM:begin
+                if(remem_direct==1'b1) begin//电阻太小
+                    if(memristor_adc_data>MEM_INIT_UP_almost) begin//电阻太小，需要长脉冲
+                        if(ch_cnt>=PULSE_N1)
+                            dac_data_o  <=  DETECT_VOL;
+                        else
+                            dac_data_o  <=  PROG_NEG_VOL;
+                    end
+                    else begin//电阻不算很小，用短脉冲控制
+                        if(ch_cnt>=PULSE_N2)
+                            dac_data_o  <=  DETECT_VOL;
+                        else
+                            dac_data_o  <=  REMEM_SHORT_NEG_VOL;
+                    end
+                end
+                else begin//电阻太大
+                    if(memristor_adc_data<MEM_INIT_DOWN_almoset)begin//电阻太大，需要长脉冲
+                        if(ch_cnt>=PULSE_P1)
+                            dac_data_o  <=  DETECT_VOL;
+                        else
+                            dac_data_o  <=  REMEM_POS_VOL;
+                    end
+                    else begin//电阻不算很大，用短脉冲控制
+                        if(ch_cnt>=PULSE_P2)
+                            dac_data_o  <=  DETECT_VOL;
+                        else
+                            dac_data_o  <=  REMEM_SHORT_POS_VOL;
+                    end
+                end
+                // if(ch_cnt>=SHORT_PULSE)
+                //     dac_data_o  <=  DETECT_VOL;
+                // else if(remem_direct==1'b1)
+                //     dac_data_o  <=  PROG_NEG_VOL;
+                // else
+                //     dac_data_o  <=  REMEM_POS_VOL;
+            end
+            IDLE:begin
+                dac_data_o  <=  DETECT_VOL;
+            end
+        endcase
+end
+`endif
+
+//****************************ADC接收**********************************//
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        begin_adc_conv  <=  0;
+    else if(state==DETECT_P||state==DETECT_R) begin
+        if(adc_rece_cnt==3'b111&&adc_done)
+            begin_adc_conv  <=  0;
+        else
+            begin_adc_conv  <=  1'b1;
+    end
+    else
+        begin_adc_conv  <=  0;
+end
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        adc_rece_cnt    <=  0;
+    else if((state==DETECT_P||state==DETECT_R)&&adc_done)
+        adc_rece_cnt    <=  adc_rece_cnt+1'b1;
+end
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        adc_data_sum    <=  0;
+    else if(adc_done&&adc_rece_cnt>8'd3)
+        adc_data_sum    <=  adc_data_sum+adc_data;
+    else if(go_detect_p||go_detect_r)
+        adc_data_sum    <=  0;
+end 
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        memristor_adc_data  <=  0;
+    else if(state==WAIT_SW_2)
+        memristor_adc_data  <=  adc_data_abs[15:0];
+end
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        piezo_adc_data  <=  0;
+    else if(state==WAIT_SW_1)
+        piezo_adc_data  <=  adc_data_abs[15:0];
+end
+//****************************数据上传**********************************//
+
+always @(posedge clk_i or negedge rst_n_i) begin
+    if(!rst_n_i)
+        upload_data_vld <=  0;
+    else if(go_adapt||go_break||go_idle||go_remem)
+        upload_data_vld <=  1'b1;
+    else if(upload_data_rdy==0)
+        upload_data_vld <=  0;
+end
+
+assign                  mem_state   =   (state==IDLE)   ?   2'd0:
+                                        (state==REMEM)  ?   2'd1:
+                                        (state==ADAPT)  ?   2'd2:
+                                        (state==BREAK)  ?   2'd3:
+                                        2'd0;
+
+//****************************模块例化**********************************//
+
+ADS8689 ADS8689_u0 (
+    .clk_50m                (clk_i          ),
+    .rst_n                  (rst_n_i        ),
+    .begin_conv             (begin_adc_conv ),
+    .conv_done              (adc_done       ),
+    .init_done              (adc_init_done  ),
+    .conv_data              (adc_data       ),
+
+    .RVS                    (RVS_i          ),
+    .CONVST                 (CONVST_o       ),
+    .ADC_RST                (ADC_RST_o      ),
+
+    .sdi                    (adc_sdi_i      ),
+    .sdo                    (adc_sdo_o      ),
+    .sclk                   (adc_sclk_o     )
+);
+
+data_upload data_upload_u0 (
+    .clk_i                  (clk_i          ),
+    .rst_n_i                (rst_n_i        ),
+    .flagA_i                (flagA_i        ),
+    .cy_full_i              (cy_full_i      ),
+    .cy_empty_i             (cy_empty_i     ),
+    .slcs_o                 (slcs_o         ),
+    .sloe_o                 (sloe_o         ),
+    .slrd_o                 (slrd_o         ),
+    .slrwr_o                (slrwr_o        ),
+    .pktend_o               (pktend_o       ),
+    .USB_idata_i            (USB_idata      ),
+    .USB_odata_o            (USB_odata      ),
+    .FIFOadr_o              (FIFOadr_o      ),
+    .fd_sign_o              (fd_sign        ),
+    .memristor_adc_data_i   (memristor_adc_data),
+    .piezo_adc_data_i       (piezo_adc_data ),
+    .ch_sign_i              (ch_sign        ),
+    .mem_state_i            (mem_state      ),
+    .TX                     (TX             ),
+    .data_vld_i             (upload_data_vld),
+    .data_rdy_o             (upload_data_rdy)
+);
+
+endmodule

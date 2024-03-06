@@ -1,0 +1,47 @@
+
+State Machine - |mem_frame_1ch|state
+Name state.IDLE state.REMEM state.BREAK state.ADAPT state.WAIT_SW_2 state.DETECT_R state.WAIT_SW_1 state.DETECT_P state.WAIT_CH state.INIT 
+state.INIT 0 0 0 0 0 0 0 0 0 0 
+state.WAIT_CH 0 0 0 0 0 0 0 0 1 1 
+state.DETECT_P 0 0 0 0 0 0 0 1 0 1 
+state.WAIT_SW_1 0 0 0 0 0 0 1 0 0 1 
+state.DETECT_R 0 0 0 0 0 1 0 0 0 1 
+state.WAIT_SW_2 0 0 0 0 1 0 0 0 0 1 
+state.ADAPT 0 0 0 1 0 0 0 0 0 1 
+state.BREAK 0 0 1 0 0 0 0 0 0 1 
+state.REMEM 0 1 0 0 0 0 0 0 0 1 
+state.IDLE 1 0 0 0 0 0 0 0 0 1 
+
+State Machine - |mem_frame_1ch|data_upload:data_upload_u0|state
+Name state.UPLOAD state.SEND state.HEX2DEC state.IDLE 
+state.IDLE 0 0 0 0 
+state.HEX2DEC 0 0 1 1 
+state.SEND 0 1 0 1 
+state.UPLOAD 1 0 0 1 
+
+State Machine - |mem_frame_1ch|data_upload:data_upload_u0|CYUSB_control:CYUSB_control_u0|t_state
+Name t_state.T_IDLE t_state.T_PKTEND_DELAY t_state.T_TRANS t_state.T_ADDR_SLOE 
+t_state.T_IDLE 0 0 0 0 
+t_state.T_TRANS 1 0 1 0 
+t_state.T_PKTEND_DELAY 1 1 0 0 
+t_state.T_ADDR_SLOE 1 0 0 1 
+
+State Machine - |mem_frame_1ch|data_upload:data_upload_u0|CYUSB_control:CYUSB_control_u0|state
+Name state.WRITE state.READ state.IDLE 
+state.IDLE 0 0 0 
+state.READ 0 1 1 
+state.WRITE 1 0 1 
+
+State Machine - |mem_frame_1ch|data_upload:data_upload_u0|HEX2DEC:HEX2DEC_u0|state
+Name state.ADD state.JUDGE state.SHIFT state.IDLE 
+state.IDLE 0 0 0 0 
+state.SHIFT 0 0 1 1 
+state.JUDGE 0 1 0 1 
+state.ADD 1 0 0 1 
+
+State Machine - |mem_frame_1ch|ADS8689:ADS8689_u0|state
+Name state.IDLE state.CONV state.INIT state.ACQ 
+state.INIT 0 0 0 0 
+state.CONV 0 1 1 0 
+state.IDLE 1 0 1 0 
+state.ACQ 0 0 1 1 

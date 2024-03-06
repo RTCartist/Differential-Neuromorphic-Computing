@@ -1,0 +1,4 @@
+.subckt abs_model IN OUT params:
+.func absv(a) {IF(a<0,-1,1)}
+Eabs OUT 0 value={absv(V(IN,0))*V(IN,0)}
+.ends abs_model

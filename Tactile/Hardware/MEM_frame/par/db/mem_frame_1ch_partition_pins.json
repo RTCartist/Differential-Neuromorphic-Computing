@@ -1,0 +1,161 @@
+{
+	"partitions" : [
+		{
+			"name" : "Top",
+			"pins" : [
+				{
+					"name" : "CONVST_o",
+					"strict" : false
+				},
+				{
+					"name" : "ADC_RST_o",
+					"strict" : false
+				},
+				{
+					"name" : "adc_sdo_o",
+					"strict" : false
+				},
+				{
+					"name" : "adc_sclk_o",
+					"strict" : false
+				},
+				{
+					"name" : "slrwr_o",
+					"strict" : false
+				},
+				{
+					"name" : "pktend_o",
+					"strict" : false
+				},
+				{
+					"name" : "ctrl_switch_o[0]",
+					"strict" : false
+				},
+				{
+					"name" : "ctrl_switch_o[1]",
+					"strict" : false
+				},
+				{
+					"name" : "ctrl_switch_o[2]",
+					"strict" : false
+				},
+				{
+					"name" : "ctrl_switch_o[3]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[0]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[1]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[2]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[3]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[4]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[5]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[6]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[7]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[8]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_data_o[9]",
+					"strict" : false
+				},
+				{
+					"name" : "dac_clk_o",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[0]",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[1]",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[2]",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[3]",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[4]",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[5]",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[6]",
+					"strict" : false
+				},
+				{
+					"name" : "USB_data[7]",
+					"strict" : false
+				},
+				{
+					"name" : "rst_n_i",
+					"strict" : false
+				},
+				{
+					"name" : "clk_i",
+					"strict" : false
+				},
+				{
+					"name" : "RVS_i",
+					"strict" : false
+				},
+				{
+					"name" : "cy_full_i",
+					"strict" : false
+				},
+				{
+					"name" : "adc_sdi_i",
+					"strict" : false
+				},
+				{
+					"name" : "altera_reserved_tms",
+					"strict" : false
+				},
+				{
+					"name" : "altera_reserved_tck",
+					"strict" : false
+				},
+				{
+					"name" : "altera_reserved_tdi",
+					"strict" : false
+				},
+				{
+					"name" : "altera_reserved_tdo",
+					"strict" : false
+				}
+			]
+		}
+	]
+}

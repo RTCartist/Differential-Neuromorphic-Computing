@@ -1,0 +1,14 @@
+.subckt calfunc in out params:
++ vup = 0.16  vun = 0.00
++ bia1 = 0.00 plus1 = 1 bia2 = 0.00 plus2 = 0 bia0= -0.1
+
+.FUNC expr1(x) {IF(x>vup, (x-bia1)*plus1 , 0)}
+.FUNC expr2(x) {IF(vup>=x, (x-bia2)*plus2 , 0)}
+.FUNC expr3(x) {IF(x>vun, 1 , 0)}
+.FUNC expr4(x) {IF(x<=vun, bia0, 0)}
+
+.FUNC totalfunction(x) {expr1(x)+expr2(x)*expr3(x)+expr4(x)}
+
+Eout out 0 value = {totalfunction(V(in,0))}
+
+.ends calfunc
