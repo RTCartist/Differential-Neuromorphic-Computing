@@ -18,3 +18,6 @@ Configuration instruction:
 The code using steps:
 1. For hardware implementation, Verilog codes are located in the 'Hardware/MEM_frame' folder and the mem_frame_1ch.v within the 'Hardware/MEM_frame/rtl' folder is the top-level file. You could run the project mem_frame_1ch.qpf in Quartus in the 'Hardware/MEM_frame/par' folder directly. Configuration files reside in the 'Hardware/Configuration' folder, providing the pin configuration used in the design. These Verilog codes can be customized to meet specific usage requirements and circuit designs.
 2. For the equivalent simulation, the simulation file located in the 'Simulation' folder includes the establishment of the memristor model, the input sensory set, the selection of dynamic modulation schemes, and the readout of results.
+
+Note:
+This project facilitates robot control by manipulating the output pins defined in npn_test.v (./Hardware/MEM_frame/rtl/npn_test.v). Additionally, it includes an example code (./Control/MDK-ARM/RS485.uvprojx) for controlling robots using RS485 communication.
